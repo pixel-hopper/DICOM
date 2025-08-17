@@ -43,4 +43,4 @@ Tkinter: A GUI library for Python, essential for building the application's user
 
 ## 🌟 About Me
 
-Created by an artist who codes while textures bake. [ArtStation](https://www.artstation.com/jaimerodriguez/)
+Artist that likes to code when my textures are baking. [Artstation](https://www.artstation.com/jaimerodriguez/)
