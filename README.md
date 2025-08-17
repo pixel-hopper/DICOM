@@ -21,7 +21,6 @@ Test the application with your own DICOM files (X-rays, CT scans, MRIs, etc.) or
    ```
    pip install pydicom pillow numpy
    ```
-   For better DICOM support (optional):
    ```
    pip install pylibjpeg pylibjpeg-libjpeg
    ```
