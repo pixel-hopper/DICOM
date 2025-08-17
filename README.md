@@ -3,7 +3,7 @@
 A lightweight DICOM image extractor designed for fast visualization of medical imaging without the clutter of outdated interfaces or bloated software.
 
 ### Sample DICOM Files
-Test the application with your own DICOM files (X-rays, CT scans, MRIs, etc.) or use sample files from [medimodel.com](https://medimodel.com/sample-dicom-files/class-3-malocclusion/).
+Test the application with your own DICOM files (X-rays, CT scans, MRIs, etc.) or use sample files online.
 
 ## 🚀 Instructions 
 
