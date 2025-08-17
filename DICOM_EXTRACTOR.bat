@@ -6,6 +6,7 @@ set "GREEN=[32m"
 set "YELLOW=[33m"
 set "RED=[31m"
 set "NC=[0m"
+set "PYTHON_URL=https://www.python.org/ftp/python/3.11.5/python-3.11.5-amd64.exe"
 
 :: Get the directory where the script is located
 set "SCRIPT_DIR=%~dp0"
@@ -20,13 +21,55 @@ if not exist "%PYTHON_SCRIPT%" (
     exit /b 1
 )
 
-:: Check if Python is installed
+:: Function to check Python installation
+:CheckPython
 where python >nul 2>nul
-if %ERRORLEVEL% NEQ 0 (
-    echo %RED%Python is not installed or not in PATH. Please install Python 3 and try again.%NC%
+if %ERRORLEVEL% EQU 0 (
+    python -c "import sys; exit(0) if sys.version_info >= (3, 7) else exit(1)" >nul 2>nul
+    if %ERRORLEVEL% EQU 0 (
+        goto PythonOK
+    )
+)
+
+:: Python not found or version too old
+cls
+echo %YELLOW%Python 3.7 or newer is required but not found or the version is too old.%NC%
+echo.
+echo Would you like to download and install Python 3.11.5 now? (Y/N)
+set /p INSTALL_PYTHON=
+
+if /i "%INSTALL_PYTHON%"=="Y" (
+    echo Downloading Python installer...
+    powershell -Command "(New-Object System.Net.WebClient).DownloadFile('%PYTHON_URL%', '%TEMP%\python_installer.exe')"
+    if %ERRORLEVEL% NEQ 0 (
+        echo %RED%Failed to download Python installer. Please check your internet connection.%NC%
+        pause
+        exit /b 1
+    )
+    
+    echo Installing Python...
+    echo %YELLOW%IMPORTANT: In the Python installer, make sure to check "Add Python to PATH"%NC%
+    echo %YELLOW%at the bottom of the installer window before clicking "Install Now".%NC%
+    echo.
+    echo Press any key to start the Python installer...
+    pause >nul
+    
+    start /wait "" "%TEMP%\python_installer.exe" /quiet InstallAllUsers=1 PrependPath=1
+    
+    echo Installation complete. Please restart this application.
+    echo Press any key to exit...
+    pause >nul
+    exit /b 0
+) else (
+    echo %RED%Python is required to run this application. Please install Python 3.7 or newer and try again.%NC%
+    echo You can download Python from: https://www.python.org/downloads/
+    echo Make sure to check "Add Python to PATH" during installation.
+    echo.
     pause
     exit /b 1
 )
+
+:PythonOK
 
 :: Install requirements if requirements.txt exists
 if exist "%REQUIREMENTS_FILE%" (
