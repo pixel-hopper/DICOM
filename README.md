@@ -1,5 +1,10 @@
 # DICOM Image Extractor
 
+A lightweight DICOM image extractor designed for fast visualization of medical imaging without the clutter of outdated interfaces or bloated software.
+
+### Sample DICOM Files
+Test the application with your own DICOM files (X-rays, CT scans, MRIs, etc.) or use sample files from [medimodel.com](https://medimodel.com/sample-dicom-files/class-3-malocclusion/).
+
 ## 🚀 Instructions 
 
 1. Keep both `DICOM_EXTRACTOR.py` and `DICOM_EXTRACTOR.bat` in the same folder.
@@ -43,4 +48,4 @@ Tkinter: A GUI library for Python, essential for building the application's user
 
 ## 🌟 About Me
 
-Artist that likes to code when my textures are baking. [Artstation](https://www.artstation.com/jaimerodriguez/)
+Created by an artist who codes while textures bake. [ArtStation](https://www.artstation.com/jaimerodriguez/)
