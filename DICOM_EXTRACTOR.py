@@ -12,6 +12,10 @@ import threading
 import tempfile
 import sys
 import subprocess
+import imageio
+import numpy as np
+from tkinter import messagebox, filedialog
+from PIL import Image
 try:
     import cv2
     OPENCV_AVAILABLE = True
@@ -359,6 +363,23 @@ class DICOMExtractorApp:
         )
         self.export_btn.pack(side=tk.TOP, fill=tk.X)
         
+        # Add separate buttons for GIF and MP4 export
+        self.export_gif_btn = ttk.Button(
+            btn_frame,
+            text="Export GIF",
+            command=lambda: self.export_animation('gif'),
+            width=15
+        )
+        self.export_gif_btn.pack(side=tk.TOP, fill=tk.X, pady=(0, 2))
+        
+        self.export_mp4_btn = ttk.Button(
+            btn_frame,
+            text="Export MP4",
+            command=lambda: self.export_animation('mp4'),
+            width=15
+        )
+        self.export_mp4_btn.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
+        
         # Progress and status frame with reduced top padding
         status_frame = ttk.Frame(self.main_frame)
         status_frame.grid(row=2, column=0, sticky="ew", pady=(0, 5))
@@ -485,10 +506,172 @@ class DICOMExtractorApp:
         """Handle drag leave event"""
         pass
     
-    def export_images(self):
-        """Export the extracted images to a selected directory"""
+    def _ensure_images_loaded(self):
+        """Ensure images are loaded, extracting from ZIPs if necessary"""
         if not hasattr(self, 'current_image_paths') or not self.current_image_paths:
-            messagebox.showinfo("No Images", "No extracted images available to export.")
+            # Get the list of files from the text widget
+            file_paths = self.file_text.get('1.0', tk.END).strip().split('\n')
+            file_paths = [f.strip() for f in file_paths if f.strip()]
+            
+            if not file_paths:
+                messagebox.showinfo("No Files", "No files available to process. Please add DICOM files or ZIP archives first.")
+                return False
+                
+            # Process the files to extract images
+            self.image_paths = []
+            temp_dir = os.path.join(tempfile.gettempdir(), 'dicom_extractor')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            for file_path in file_paths:
+                if file_path.lower().endswith('.zip'):
+                    try:
+                        # Extract ZIP and process DICOM files
+                        extract_dir = os.path.join(temp_dir, os.path.basename(file_path) + '_extracted')
+                        os.makedirs(extract_dir, exist_ok=True)
+                        extract_zip(file_path, extract_dir)
+                        
+                        # Find and process DICOM files in the extracted directory
+                        dicom_files = find_dicom_files(extract_dir)
+                        for dicom_file in dicom_files:
+                            img_data, ds = process_dicom(dicom_file)
+                            if img_data is not None:
+                                # Save the image to a temporary file
+                                img = Image.fromarray(img_data)
+                                img_filename = f"{os.path.splitext(os.path.basename(dicom_file))[0]}.png"
+                                img_path = os.path.join(temp_dir, img_filename)
+                                img.save(img_path)
+                                self.image_paths.append(img_path)
+                    except Exception as e:
+                        print(f"Error processing {file_path}: {e}")
+                else:
+                    # Process single DICOM file
+                    try:
+                        img_data, ds = process_dicom(file_path)
+                        if img_data is not None:
+                            img = Image.fromarray(img_data)
+                            img_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}.png"
+                            img_path = os.path.join(temp_dir, img_filename)
+                            img.save(img_path)
+                            self.image_paths.append(img_path)
+                    except Exception as e:
+                        print(f"Error processing {file_path}: {e}")
+            
+            if not self.image_paths:
+                messagebox.showinfo("No Images", "No DICOM images could be extracted from the provided files.")
+                return False
+                
+            self.current_image_paths = self.image_paths
+        return True
+
+    def _create_animation(self, output_format):
+        """Helper method to create animations in the specified format"""
+        if not self._ensure_images_loaded():
+            return
+            
+        output_dir = filedialog.askdirectory(title="Select Output Directory")
+        if not output_dir:
+            return
+            
+        try:
+            # Group images by resolution
+            resolution_groups = {}
+            
+            # First, group all images by their resolution
+            for img_path in self.current_image_paths:
+                with Image.open(img_path) as img:
+                    resolution = img.size  # (width, height)
+                    if resolution not in resolution_groups:
+                        resolution_groups[resolution] = []
+                    resolution_groups[resolution].append(img_path)
+            
+            # Sort each group by filename to maintain order
+            for resolution in resolution_groups:
+                resolution_groups[resolution].sort()
+            
+            # Create animations for each resolution group
+            created_files = []
+            
+            for resolution, img_paths in resolution_groups.items():
+                if len(img_paths) < 2:
+                    continue  # Skip groups with only one image
+                
+                # Sort images by name with natural sorting to handle numbers correctly
+                def natural_sort_key(s):
+                    import re
+                    return [int(text) if text.isdigit() else text.lower()
+                            for text in re.split('(\\d+)', os.path.basename(s))]
+                
+                img_paths = sorted(img_paths, key=natural_sort_key)
+                
+                # Create a base filename with resolution info
+                base_filename = f"animation_{resolution[0]}x{resolution[1]}"
+                output_file = os.path.join(output_dir, f"{base_filename}.{output_format}")
+                
+                # Make sure the filename is unique
+                counter = 1
+                while os.path.exists(output_file):
+                    output_file = os.path.join(output_dir, f"{base_filename}_{counter}.{output_format}")
+                    counter += 1
+                
+                # Create the animation
+                try:
+                    if output_format == 'gif':
+                        # Create GIF
+                        with imageio.get_writer(output_file, mode='I', duration=0.5) as writer:
+                            for img_path in img_paths:
+                                image = imageio.v2.imread(img_path)
+                                writer.append_data(image)
+                    else:  # MP4
+                        # Create MP4 with H.264 codec
+                        writer = imageio.get_writer(
+                            output_file,
+                            fps=2,  # 2 frames per second
+                            codec='libx264',
+                            quality=8,
+                            pixelformat='yuv420p',
+                            ffmpeg_params=[
+                                '-vf', f'scale=trunc({resolution[0]}/2)*2:trunc({resolution[1]}/2)*2'  # Ensure even dimensions
+                            ]
+                        )
+                        
+                        # Add frames to video
+                        for img_path in img_paths:
+                            img = imageio.v2.imread(img_path)
+                            writer.append_data(img)
+                        
+                        writer.close()
+                    
+                    created_files.append(output_file)
+                except Exception as e:
+                    messagebox.showerror("Export Error", f"Failed to create animation {output_file}: {str(e)}")
+            
+            # Show success message
+            if created_files:
+                if len(created_files) == 1:
+                    messagebox.showinfo(
+                        "Export Complete",
+                        f"Successfully exported animation to:\n{created_files[0]}"
+                    )
+                else:
+                    messagebox.showinfo(
+                        "Export Complete",
+                        f"Successfully exported {len(created_files)} animations to:\n" +
+                        "\n".join([f"• {os.path.basename(f)}" for f in created_files]) +
+                        f"\n\nDirectory: {output_dir}"
+                    )
+            else:
+                messagebox.showinfo(
+                    "No Animations Created",
+                    "No animations were created. Make sure you have multiple images "
+                    "with the same resolution to create an animation."
+                )
+                
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to create animations: {str(e)}")
+    
+    def export_images(self):
+        """Export the extracted DICOM images to a user-selected directory"""
+        if not self._ensure_images_loaded():
             return
             
         export_dir = filedialog.askdirectory(title="Select Export Directory")
@@ -505,18 +688,21 @@ class DICOMExtractorApp:
             
             if success_count > 0:
                 messagebox.showinfo(
-                    "Export Complete", 
+                    "Export Complete",
                     f"Successfully exported {success_count} image(s) to:\n{export_dir}"
                 )
             else:
-                messagebox.showinfo("Export Failed", "No images were exported.")
+                messagebox.showinfo(
+                    "No Images Exported",
+                    "No images were available for export."
+                )
                 
         except Exception as e:
-            messagebox.showerror(
-                "Export Error", 
-                f"Failed to export images: {str(e)}\n\n"
-                f"Successfully exported {success_count} images before the error occurred."
-            )
+            messagebox.showerror("Export Error", f"Failed to export images: {str(e)}")
+    
+    def export_animation(self, output_format):
+        """Export the extracted images as animated GIFs or MP4s, grouped by resolution"""
+        self._create_animation(output_format)
     
     def reset_application(self):
         """Reset the application to its initial state"""
@@ -817,6 +1003,15 @@ class DICOMExtractorApp:
             if zip_name not in zip_groups:
                 zip_groups[zip_name] = []
             zip_groups[zip_name].append(img_path)
+            
+        # Sort images within each group using natural sort
+        def natural_sort_key(s):
+            import re
+            return [int(text) if text.isdigit() else text.lower()
+                   for text in re.split('(\\d+)', os.path.basename(s))]
+            
+        for zip_name in zip_groups:
+            zip_groups[zip_name].sort(key=natural_sort_key)
         
         # Show previews grouped by ZIP file
         for zip_name, img_list in zip_groups.items():
